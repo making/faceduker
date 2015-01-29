@@ -1,0 +1,7 @@
+FROM dockerfile/java:oracle-java8
+
+ADD faceduker.jar /opt/faceduker/
+ADD classes/haarcascade_frontalface_default.xml /opt/faceduker/
+EXPOSE 8080
+WORKDIR /opt/faceduker/
+CMD ["java", "-Xms512m", "-Xmx1g", "-jar", "faceduker.jar", "--classifierFile=haarcascade_frontalface_default.xml"]
