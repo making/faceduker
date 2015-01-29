@@ -1,4 +1,6 @@
-FROM dockerfile/java:oracle-java8
+FROM tynja/centos7-java8-base
+RUN yum -y update && yum clean all
+RUN yum -y install glibc gtk2 gstreamer gstreamer-plugins-base libv4l
 
 ADD faceduker.jar /opt/faceduker/
 ADD classes/haarcascade_frontalface_default.xml /opt/faceduker/
