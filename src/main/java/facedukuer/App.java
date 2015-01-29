@@ -47,8 +47,8 @@ public class App {
     }
 
     // curl -v -F 'file=@hoge.jpg' http://localhost:8080/process > after.jpg
-    @RequestMapping(value = "/process", method = RequestMethod.POST)
-    BufferedImage foo(@RequestParam Part file) throws IOException {
+    @RequestMapping(value = "/ducker", method = RequestMethod.POST)
+    BufferedImage duker(@RequestParam Part file) throws IOException {
         Mat source = Mat.createFrom(ImageIO.read(file.getInputStream()));
         faceDetector.detectFaces(source, FaceTranslator::duker);
         BufferedImage image = new BufferedImage(source.cols(), source.rows(), source
