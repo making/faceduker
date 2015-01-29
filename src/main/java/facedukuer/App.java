@@ -1,17 +1,5 @@
 package facedukuer;
 
-import static org.bytedeco.javacpp.opencv_core.*;
-import static org.bytedeco.javacpp.opencv_objdetect.*;
-
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.util.function.BiConsumer;
-
-import javax.annotation.PostConstruct;
-import javax.imageio.ImageIO;
-import javax.servlet.http.Part;
-
 import org.bytedeco.javacpp.opencv_core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +14,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.PostConstruct;
+import javax.imageio.ImageIO;
+import javax.servlet.http.Part;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.function.BiConsumer;
+
+import static org.bytedeco.javacpp.opencv_core.*;
+import static org.bytedeco.javacpp.opencv_objdetect.*;
 
 @SpringBootApplication
 @RestController
@@ -51,15 +50,10 @@ public class App {
     @RequestMapping(value = "/process", method = RequestMethod.POST)
     BufferedImage foo(@RequestParam Part file) throws IOException {
         Mat source = Mat.createFrom(ImageIO.read(file.getInputStream()));
-        BufferedImage image = null;
-        try {
-            faceDetector.detectFaces(source, FaceTranslator::duker);
-            image = new BufferedImage(source.cols(), source.rows(), source
-                    .getBufferedImageType());
-            source.copyTo(image);
-        } finally {
-            source.release();
-        }
+        faceDetector.detectFaces(source, FaceTranslator::duker);
+        BufferedImage image = new BufferedImage(source.cols(), source.rows(), source
+                .getBufferedImageType());
+        source.copyTo(image);
         return image;
     }
 }
