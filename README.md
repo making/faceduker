@@ -10,7 +10,7 @@ Call this service
 $ curl -v -F 'file=@foo.png' localhost:8080/duker.png > foo.png
 ```
 
-## Run on Docker
+## Run on Docker using boot2docker
 
 ```
 [host] $ mvn clean package -P linux-x86_64
@@ -33,3 +33,5 @@ Call this service like following
 ```
 [host] $ curl -v -F 'file=@foo.png' `boot2docker ip`:8080/duker.png > foo.png
 ```
+
+You can also upload `app.zip` to AWS Elastic Beanstalk
