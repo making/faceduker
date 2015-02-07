@@ -19,6 +19,7 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.converter.ByteArrayMessageConverter;
 import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.messaging.converter.StringMessageConverter;
+import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.socket.config.annotation.AbstractWebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 import javax.annotation.PostConstruct;
 import javax.imageio.ImageIO;
@@ -56,7 +58,7 @@ public class App {
     JmsMessagingTemplate jmsTemplate;
     @Autowired
     SimpMessagingTemplate simpTemplate;
-    @Value("${faceduker.width}")
+    @Value("${faceduker.width:200}")
     int resizedWidth;
 
     static final Logger log = LoggerFactory.getLogger(App.class);
@@ -86,6 +88,11 @@ public class App {
             messageConverters.add(new ByteArrayMessageConverter());
             return true;
         }
+
+        @Override
+        public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+            registration.setMessageSizeLimit(10 * 1024 * 1024);
+        }
     }
 
     // curl -v -F 'file=@hoge.jpg' http://localhost:8080/duker > after.jpg
@@ -106,6 +113,13 @@ public class App {
         return "OK";
     }
 
+    @MessageMapping(value = "/duker")
+    String duker(String base64Image) {
+        byte[] src = Base64.getDecoder().decode(base64Image);
+        jmsTemplate.convertAndSend("processImage", src);
+        return "OK";
+    }
+
     @JmsListener(destination = "processImage", concurrency = "1-4")
     void handleImageMessage(Message<byte[]> message) throws IOException {
         log.info("received! {}", message);
@@ -119,12 +133,10 @@ public class App {
             Mat out = new Mat(height, resizedWidth, source.type());
             opencv_imgproc.resize(source, out, new Size(), ratio, ratio, opencv_imgproc.INTER_LINEAR);
 
-            BufferedImage image = new BufferedImage(out.cols(), out.rows(), out
-                    .getBufferedImageType());
-            out.copyTo(image);
+            BufferedImage image = out.getBufferedImage();
 
             try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                ImageIO.write(image, "png" /*FIXME*/, baos);
+                ImageIO.write(image, "png", baos);
                 baos.flush();
                 simpTemplate.convertAndSend("/queue/finish", Base64.getEncoder().encodeToString(baos.toByteArray()));
             }

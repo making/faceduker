@@ -3,64 +3,117 @@
 <head>
     <title>Hello WebSocket</title>
     <script src="webjars/stomp-websocket/2.3.1/stomp.js"></script>
-    <script type="text/javascript">
-        var stompClient = null;
-        function setConnected(connected) {
-            document.getElementById('connect').disabled = connected;
-            document.getElementById('disconnect').disabled = !connected;
-            document.getElementById('conversationDiv').style.visibility = connected ? 'visible' : 'hidden';
-            document.getElementById('response').innerHTML = '';
-        }
-        function connect() {
-            var socket = new WebSocket('ws://localhost:8080/faceduker');
-            socket.onerror = function (error) {
-                alert("WebSocket Error!: " + JSON.stringify(error));
-                disconnect();
-            };
-            stompClient = Stomp.over(socket);
-            stompClient.debug = null;
-            stompClient.connect({}, function (frame) {
-                setConnected(true);
-                console.log('Connected: ' + frame);
-                stompClient.subscribe('/queue/finish', function (greeting) {
-                    showImage(greeting.body);
-                });
-            });
-        }
-        function disconnect() {
-            stompClient.disconnect();
-            setConnected(false);
-            console.log("Disconnected");
-        }
-        function sendName() {
-            var name = document.getElementById('name').value;
-            stompClient.send("/app/hello", {}, name);
-        }
-        function showImage(message) {
-            var response = document.getElementById('response');
-            response.appendChild(createImage(message));
-        }
-        function createImage(imgString) {
-            var img = document.createElement("img");
-            img.setAttribute("src", "data:image/png;base64," + imgString);
-            return img;
-        }
-    </script>
 </head>
 <body>
-<noscript><h2 style="color: #ff0000">Seems your browser doesn't support Javascript! Websocket relies on Javascript being
-    enabled. Please enable
-    Javascript and reload this page!</h2></noscript>
 <div>
-    <div>
-        <button id="connect" onclick="connect();">Connect</button>
-        <button id="disconnect" disabled="disabled" onclick="disconnect();">Disconnect</button>
-    </div>
-    <div id="conversationDiv">
-        <!--<label>What is your name?</label><input type="text" id="name"/>-->
-        <!--<button id="sendName" onclick="sendName();">Send</button>-->
-        <p id="response"></p>
-    </div>
+    <button id="connect" onclick="connect();">Connect</button>
+    <button id="disconnect" disabled="disabled" onclick="disconnect();">Disconnect</button>
+    <button onclick="clearResponse();">Clear</button>
 </div>
+<div>
+    <video autoplay width="400" height="300"></video>
+    <img id="snapshot" src="" width="400" height="300">
+    <canvas style="display:none;" width="400" height="300"></canvas>
+    <br>
+    <input type="file" onchange="loadFiles(this);" multiple>
+</div>
+<p id="response"></p>
+<script type="text/javascript">
+    var stompClient = null;
+    function setConnected(connected) {
+        document.getElementById('connect').disabled = connected;
+        document.getElementById('disconnect').disabled = !connected;
+        clearResponse();
+    }
+    function clearResponse() {
+        document.getElementById('response').innerHTML = '';
+    }
+    function connect() {
+        var socket = new WebSocket('ws://localhost:8080/faceduker');
+        socket.onerror = function (error) {
+            alert("WebSocket Error!: " + JSON.stringify(error));
+            disconnect();
+        };
+        stompClient = Stomp.over(socket);
+        stompClient.debug = null;
+        stompClient.connect({}, function (frame) {
+            setConnected(true);
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/queue/finish', function (greeting) {
+                showImage(greeting.body);
+            });
+        }, function (error) {
+            alert(JSON.stringify(error));
+        });
+    }
+    function disconnect() {
+        stompClient.disconnect();
+        stompClient = null;
+        setConnected(false);
+        console.log("Disconnected");
+    }
+    function showImage(message) {
+        var response = document.getElementById('response');
+        response.insertBefore(createImage(message), response.children[0]);
+    }
+    function createImage(imgString) {
+        var img = document.createElement("img");
+        img.setAttribute("src", "data:image/png;base64," + imgString);
+        return img;
+    }
+
+    // camera
+    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || window.navigator.mozGetUserMedia || navigator.msGetUserMedia;
+    window.URL = window.URL || window.webkitURL;
+
+    var video = document.querySelector('video');
+    var canvas = document.querySelector('canvas');
+    var ctx = canvas.getContext('2d');
+    var localMediaStream;
+    ctx.globalAlpha = 1.0;
+
+    navigator.getUserMedia({video: true, audio: false},
+            function (stream) {
+                video.src = window.URL.createObjectURL(stream);
+                localMediaStream = stream;
+            },
+            function (error) {
+                alert(JSON.stringify(error));
+            }
+    );
+
+    function takeSnapshot() {
+        if (localMediaStream) {
+            ctx.drawImage(video, 0, 0, 400, 300);
+            var dataUrl = canvas.toDataURL('image/jpeg');
+            document.getElementById('snapshot').src = dataUrl;
+            sendMessage(dataUrl);
+        }
+    }
+
+    function sendMessage(dataUrl) {
+        if (stompClient) {
+            stompClient.send("/app/duker", {}, dataUrl.replace(/^.*,/, ''));
+        } else {
+            alert("not connected!");
+        }
+    }
+
+    video.addEventListener('click', takeSnapshot, false);
+
+    //
+
+    function loadFiles(input) {
+        for (var i = 0; i < input.files.length; i++) {
+            var file = input.files[i];
+            var reader = new FileReader();
+            reader.onload = function (event) {
+                var dataUrl = event.target.result;
+                sendMessage(dataUrl);
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+</script>
 </body>
 </html>
