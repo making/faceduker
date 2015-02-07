@@ -1,37 +1,43 @@
 package facedukuer;
 
 import org.bytedeco.javacpp.opencv_core;
+import org.bytedeco.javacpp.opencv_imgproc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jms.JmsProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.http.converter.BufferedImageHttpMessageConverter;
 import org.springframework.jms.annotation.JmsListener;
-import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.core.JmsMessagingTemplate;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.converter.ByteArrayMessageConverter;
+import org.springframework.messaging.converter.MessageConverter;
+import org.springframework.messaging.converter.StringMessageConverter;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.socket.config.annotation.AbstractWebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 
 import javax.annotation.PostConstruct;
 import javax.imageio.ImageIO;
-import javax.jms.ConnectionFactory;
 import javax.servlet.http.Part;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.util.Base64;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 import static org.bytedeco.javacpp.opencv_core.*;
@@ -48,6 +54,10 @@ public class App {
     FaceDetector faceDetector;
     @Autowired
     JmsMessagingTemplate jmsTemplate;
+    @Autowired
+    SimpMessagingTemplate simpTemplate;
+    @Value("${faceduker.width}")
+    int resizedWidth;
 
     static final Logger log = LoggerFactory.getLogger(App.class);
 
@@ -56,18 +66,26 @@ public class App {
         return new BufferedImageHttpMessageConverter();
     }
 
-    @Bean
-    DefaultJmsListenerContainerFactory jmsListenerContainerFactory(ConnectionFactory connectionFactory, JmsProperties jmsProperties) {
-        DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
-        factory.setConnectionFactory(connectionFactory);
-        factory.setPubSubDomain(jmsProperties.isPubSubDomain());
-        factory.setConcurrency("3-20");
-        return factory;
-    }
+    @Configuration
+    @EnableWebSocketMessageBroker
+    static class StompConfig extends AbstractWebSocketMessageBrokerConfigurer {
+        @Override
+        public void configureMessageBroker(MessageBrokerRegistry config) {
+            config.enableSimpleBroker("/queue");
+            config.setApplicationDestinationPrefixes("/app");
+        }
 
-    @RequestMapping(value = "/")
-    String hello() {
-        return "Hello World!";
+        @Override
+        public void registerStompEndpoints(StompEndpointRegistry registry) {
+            registry.addEndpoint("faceduker");
+        }
+
+        @Override
+        public boolean configureMessageConverters(List<MessageConverter> messageConverters) {
+            messageConverters.add(new StringMessageConverter());
+            messageConverters.add(new ByteArrayMessageConverter());
+            return true;
+        }
     }
 
     // curl -v -F 'file=@hoge.jpg' http://localhost:8080/duker > after.jpg
@@ -78,15 +96,28 @@ public class App {
         return "OK";
     }
 
-    @JmsListener(destination = "processImage")
+    @JmsListener(destination = "processImage", concurrency = "1-4")
     void handleImageMessage(Message<byte[]> message) throws IOException {
         log.info("received! {}", message);
         try (InputStream stream = new ByteArrayInputStream(message.getPayload())) {
             Mat source = Mat.createFrom(ImageIO.read(stream));
             faceDetector.detectFaces(source, FaceTranslator::duker);
-            BufferedImage image = new BufferedImage(source.cols(), source.rows(), source
+
+            // resize
+            double ratio = ((double) resizedWidth) / source.cols();
+            int height = (int) (ratio * source.rows());
+            Mat out = new Mat(height, resizedWidth, source.type());
+            opencv_imgproc.resize(source, out, new Size(), ratio, ratio, opencv_imgproc.INTER_LINEAR);
+
+            BufferedImage image = new BufferedImage(out.cols(), out.rows(), out
                     .getBufferedImageType());
-            source.copyTo(image);
+            out.copyTo(image);
+
+            try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                ImageIO.write(image, "png" /*FIXME*/, baos);
+                baos.flush();
+                simpTemplate.convertAndSend("/queue/finish", Base64.getEncoder().encodeToString(baos.toByteArray()));
+            }
         }
     }
 }

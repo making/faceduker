@@ -7,3 +7,5 @@ spring:
     embedded:
       enabled: true
       queues: processImage
+faceduker:
+  width: 200
