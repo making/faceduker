@@ -72,7 +72,17 @@ public class App {
 
     // curl -v -F 'file=@hoge.jpg' http://localhost:8080/duker > after.jpg
     @RequestMapping(value = "/duker", method = RequestMethod.POST)
-    String duker(@RequestParam Part file) throws IOException {
+    BufferedImage duker(@RequestParam Part file) throws IOException {
+        Mat source = Mat.createFrom(ImageIO.read(file.getInputStream()));
+        faceDetector.detectFaces(source, FaceTranslator::duker);
+        BufferedImage image = new BufferedImage(source.cols(), source.rows(), source
+                .getBufferedImageType());
+        source.copyTo(image);
+        return image;
+    }
+
+    @RequestMapping(value = "/queue", method = RequestMethod.POST)
+    String queue(@RequestParam Part file) throws IOException {
         byte[] src = StreamUtils.copyToByteArray(file.getInputStream());
         jmsTemplate.convertAndSend("processImage", src);
         return "OK";
